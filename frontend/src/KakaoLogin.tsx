@@ -23,46 +23,46 @@ const KakaoLogin: React.FC<KakaoLoginProps> = ({ onLogin, onLogout, currentUser 
   const [isKakaoLoaded, setIsKakaoLoaded] = useState(false);
 
   useEffect(() => {
-  // 이미 로드된 스크립트가 있는지 확인
-  if (window.Kakao && window.Kakao.isInitialized()) {
-    setIsKakaoLoaded(true);
-    return;
-  }
-
-  // 기존 스크립트 확인
-  const existingScript = document.querySelector('script[src="https://developers.kakao.com/sdk/js/kakao.js"]');
-  
-  if (existingScript) {
-    if (window.Kakao) {
-      const KAKAO_JS_KEY = '96b5bc4d04389034da3944a3e9f6b459';
-      if (!window.Kakao.isInitialized()) {
-        window.Kakao.init(KAKAO_JS_KEY);
-      }
+    // 이미 로드된 스크립트가 있는지 확인
+    if (window.Kakao && window.Kakao.isInitialized()) {
       setIsKakaoLoaded(true);
+      return;
     }
-    return;
-  }
 
-  // 새 스크립트 생성
-  const script = document.createElement('script');
-  script.src = 'https://developers.kakao.com/sdk/js/kakao.js';
-  script.async = true;
-  script.onload = () => {
-    if (window.Kakao) {
-      const KAKAO_JS_KEY = '96b5bc4d04389034da3944a3e9f6b459';
-      
-      if (!window.Kakao.isInitialized()) {
-        window.Kakao.init(KAKAO_JS_KEY);
+    // 기존 스크립트 확인
+    const existingScript = document.querySelector('script[src="https://developers.kakao.com/sdk/js/kakao.js"]');
+    
+    if (existingScript) {
+      if (window.Kakao) {
+        const KAKAO_JS_KEY = '96b5bc4d04389034da3944a3e9f6b459';
+        if (!window.Kakao.isInitialized()) {
+          window.Kakao.init(KAKAO_JS_KEY);
+        }
+        setIsKakaoLoaded(true);
       }
-      setIsKakaoLoaded(true);
+      return;
     }
-  };
-  document.head.appendChild(script);
 
-  return () => {
-    // cleanup 시 스크립트 제거하지 않음 (다른 컴포넌트에서 사용할 수 있음)
-  };
-}, []);
+    // 새 스크립트 생성
+    const script = document.createElement('script');
+    script.src = 'https://developers.kakao.com/sdk/js/kakao.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.Kakao) {
+        const KAKAO_JS_KEY = '96b5bc4d04389034da3944a3e9f6b459';
+        
+        if (!window.Kakao.isInitialized()) {
+          window.Kakao.init(KAKAO_JS_KEY);
+        }
+        setIsKakaoLoaded(true);
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      // cleanup 시 스크립트 제거하지 않음 (다른 컴포넌트에서 사용할 수 있음)
+    };
+  }, []);
 
   const getUserInfo = () => {
     window.Kakao.API.request({
@@ -89,27 +89,44 @@ const KakaoLogin: React.FC<KakaoLoginProps> = ({ onLogin, onLogout, currentUser 
     }
 
     window.Kakao.Auth.login({
-  scope: 'profile_nickname',  // account_email 제거
-  success: () => {
-    getUserInfo();
-  },
-  fail: (error: any) => {
-    console.error('카카오 로그인 실패:', error);
-    alert('로그인에 실패했습니다.');
-  }
-});
+      scope: 'profile_nickname',  // account_email 제거
+      success: () => {
+        getUserInfo();
+      },
+      fail: (error: any) => {
+        console.error('카카오 로그인 실패:', error);
+        alert('로그인에 실패했습니다.');
+      }
+    });
   };
 
   const handleLogout = () => {
     if (!isKakaoLoaded) return;
 
-    window.Kakao.Auth.logout()
-      .then(() => {
+    try {
+      // 카카오 로그아웃 API 호출
+      const logoutResult = window.Kakao.Auth.logout();
+      
+      // Promise 객체인지 확인
+      if (logoutResult && typeof logoutResult.then === 'function') {
+        logoutResult
+          .then(() => {
+            onLogout();
+          })
+          .catch((error: any) => {
+            console.error('로그아웃 실패:', error);
+            // 에러가 발생해도 로컬 로그아웃 처리
+            onLogout();
+          });
+      } else {
+        // Promise가 아닌 경우 즉시 로그아웃 처리
         onLogout();
-      })
-      .catch((error: any) => {
-        console.error('로그아웃 실패:', error);
-      });
+      }
+    } catch (error) {
+      console.error('로그아웃 처리 중 오류:', error);
+      // 오류 발생 시에도 로컬 로그아웃 처리
+      onLogout();
+    }
   };
 
   if (!isKakaoLoaded) {

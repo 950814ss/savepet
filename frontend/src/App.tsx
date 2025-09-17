@@ -67,10 +67,32 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<KakaoUser | null>(null);
+  
+  // 애니메이션 상태
+  const [expGainAnimation, setExpGainAnimation] = useState<number | null>(null);
+  const [evolutionAnimation, setEvolutionAnimation] = useState(false);
+  const [missionCompleteAnimation, setMissionCompleteAnimation] = useState(false);
+  const [rewardAnimation, setRewardAnimation] = useState(false);
+  
+  // UI 상태
+  const [isMobile, setIsMobile] = useState(false);
+  const [viewMode, setViewMode] = useState<'dashboard' | 'calendar' | 'transactions'>('dashboard');
+  const [showSuccess, setShowSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const handleKakaoLogin = (user: KakaoUser) => {
     setCurrentUser(user);
     fetchData();
+    showSuccessMessage(`${user.nickname}님 환영합니다!`);
   };
 
   const handleKakaoLogout = () => {
@@ -79,6 +101,12 @@ function App() {
     setCharacter(null);
     setBudget(null);
     setSavingStatus(null);
+    showSuccessMessage('로그아웃되었습니다');
+  };
+
+  const showSuccessMessage = (message: string) => {
+    setShowSuccess(message);
+    setTimeout(() => setShowSuccess(null), 3000);
   };
 
   const fetchData = async () => {
@@ -150,6 +178,8 @@ function App() {
         setAmount('');
         await fetchData();
         await fetchDailyTransactions(selectedDate);
+        
+        showSuccessMessage(`${type === 'income' ? '수입' : '지출'}이 추가되었습니다`);
       }
     } catch (error) {
       console.error('Failed to add transaction:', error);
@@ -167,7 +197,8 @@ function App() {
       if (response.ok) {
         setBudgetAmount('');
         await fetchData();
-        alert('예산이 설정되었습니다!');
+        triggerRewardAnimation();
+        showSuccessMessage('예산이 설정되었습니다!');
       }
     } catch (error) {
       console.error('Failed to set budget:', error);
@@ -176,13 +207,37 @@ function App() {
 
   const checkWeeklySavings = async () => {
     try {
+      // 현재 캐릭터 정보 저장
+      const oldExp = character?.experience || 0;
+      const oldStage = character?.stage || 'EGG';
+      
       const response = await fetch('http://localhost:8080/api/character/check-weekly-savings', {
         method: 'POST'
       });
       
       if (response.ok) {
-        fetchData();
-        alert('주간 절약 달성 체크가 완료되었습니다!');
+        // 데이터 새로고침
+        await fetchData();
+        
+        // 새로운 캐릭터 정보 직접 가져오기
+        const updatedCharacterRes = await fetch('http://localhost:8080/api/character');
+        if (updatedCharacterRes.ok) {
+          const updatedCharacter = await updatedCharacterRes.json();
+          
+          const expGained = updatedCharacter.experience - oldExp;
+          console.log('경험치 변화:', oldExp, '->', updatedCharacter.experience, '(+' + expGained + ')');
+          
+          if (expGained > 0) {
+            triggerExpGainAnimation(expGained);
+          }
+          
+          if (updatedCharacter.stage !== oldStage) {
+            triggerEvolutionAnimation();
+          }
+        }
+        
+        triggerRewardAnimation();
+        showSuccessMessage('주간 절약 달성 체크가 완료되었습니다!');
       }
     } catch (error) {
       console.error('Failed to check weekly savings:', error);
@@ -191,17 +246,62 @@ function App() {
 
   const checkDailySavings = async () => {
     try {
+      // 현재 캐릭터 정보 저장
+      const oldExp = character?.experience || 0;
+      const oldStage = character?.stage || 'EGG';
+      
       const response = await fetch('http://localhost:8080/api/character/check-daily-savings', {
         method: 'POST'
       });
       
       if (response.ok) {
-        fetchData();
-        alert('일일 절약 달성 체크가 완료되었습니다!');
+        // 데이터 새로고침
+        await fetchData();
+        
+        // 새로운 캐릭터 정보 직접 가져오기
+        const updatedCharacterRes = await fetch('http://localhost:8080/api/character');
+        if (updatedCharacterRes.ok) {
+          const updatedCharacter = await updatedCharacterRes.json();
+          
+          const expGained = updatedCharacter.experience - oldExp;
+          console.log('경험치 변화:', oldExp, '->', updatedCharacter.experience, '(+' + expGained + ')');
+          
+          if (expGained > 0) {
+            triggerExpGainAnimation(expGained);
+          }
+          
+          if (updatedCharacter.stage !== oldStage) {
+            triggerEvolutionAnimation();
+          }
+        }
+        
+        triggerRewardAnimation();
+        showSuccessMessage('일일 절약 달성 체크가 완료되었습니다!');
       }
     } catch (error) {
       console.error('Failed to check daily savings:', error);
     }
+  };
+
+  // 애니메이션 트리거 함수들
+  const triggerExpGainAnimation = (expAmount: number) => {
+    setExpGainAnimation(expAmount);
+    setTimeout(() => setExpGainAnimation(null), 2000);
+  };
+
+  const triggerEvolutionAnimation = () => {
+    setEvolutionAnimation(true);
+    setTimeout(() => setEvolutionAnimation(false), 3000);
+  };
+
+  const triggerMissionCompleteAnimation = () => {
+    setMissionCompleteAnimation(true);
+    setTimeout(() => setMissionCompleteAnimation(false), 2000);
+  };
+
+  const triggerRewardAnimation = () => {
+    setRewardAnimation(true);
+    setTimeout(() => setRewardAnimation(false), 1500);
   };
 
   const deleteTransaction = async (id: number) => {
@@ -214,6 +314,7 @@ function App() {
         if (response.ok) {
           fetchData();
           fetchDailyTransactions(selectedDate);
+          showSuccessMessage('거래가 삭제되었습니다');
         }
       } catch (error) {
         console.error('Failed to delete transaction:', error);
@@ -285,9 +386,217 @@ function App() {
     }
   }, [selectedDate, currentUser]);
 
+  // 미션 완료 체크 (savingStatus 변경 감지)
+  useEffect(() => {
+    if (savingStatus?.missionProgress?.completed && !missionCompleteAnimation) {
+      triggerMissionCompleteAnimation();
+    }
+  }, [savingStatus?.missionProgress?.completed]);
+
+  // 네비게이션 바 렌더링
+  const renderNavigationBar = () => (
+    <div className="nav-bar">
+      <button 
+        className={`nav-button ${viewMode === 'dashboard' ? 'active' : ''}`}
+        onClick={() => setViewMode('dashboard')}
+      >
+        📊 대시보드
+      </button>
+      <button 
+        className={`nav-button ${viewMode === 'calendar' ? 'active' : ''}`}
+        onClick={() => setViewMode('calendar')}
+      >
+        📅 달력
+      </button>
+      <button 
+        className={`nav-button ${viewMode === 'transactions' ? 'active' : ''}`}
+        onClick={() => setViewMode('transactions')}
+      >
+        💳 거래내역
+      </button>
+    </div>
+  );
+
+  // 대시보드 뷰 렌더링
+  const renderDashboard = () => (
+    <div className="dashboard-view">
+      {/* 빠른 거래 입력 */}
+      <div className="quick-transaction-form">
+        <h3>💳 빠른 거래 입력</h3>
+        <form onSubmit={addTransaction} className="compact-form">
+          <div className="compact-form-grid">
+            <input
+              type="text"
+              placeholder="내역 (커피, 간식, 배달음식 등)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+              className="compact-input"
+            />
+            <input
+              type="number"
+              placeholder="금액"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              className="compact-input"
+            />
+            <select 
+              value={type} 
+              onChange={(e) => setType(e.target.value as 'income' | 'expense')}
+              className="compact-select"
+            >
+              <option value="expense">지출</option>
+              <option value="income">수입</option>
+            </select>
+            <button type="submit" className="compact-submit">
+              추가
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* 캐릭터 정보 */}
+      {character && (
+        <div className="character-card enhanced">
+          <h2>🎮 내 캐릭터</h2>
+          
+          <div className="character-avatar">
+            {getStageEmoji(character.stage)}
+          </div>
+          
+          <h3>{character.name} (Lv.{character.level || 1})</h3>
+          
+          <div className="character-stats">
+            <div className="stat-item">
+              <span className="stat-label">현재 단계:</span>
+              <span className="stat-value">{getStageKorean(character.stage)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">경험치:</span>
+              <span className="stat-value">
+                {(character.experience || 0).toLocaleString()} / {getNextStageExp(character.stage).toLocaleString()}
+              </span>
+            </div>
+          </div>
+          
+          {/* 경험치 프로그레스 바 */}
+          <div className="exp-bar-container">
+            <div className="exp-bar">
+              <div 
+                className="exp-fill"
+                style={{
+                  width: `${Math.min(((character.experience || 0) / getNextStageExp(character.stage)) * 100, 100)}%`
+                }}
+              ></div>
+              
+              {/* 경험치 파티클 효과 */}
+              {expGainAnimation && (
+                <div className="exp-particle">
+                  +{expGainAnimation}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <p className="character-hint">
+            💡 절약을 달성하고 미션을 완료하면 캐릭터가 진화해요!
+          </p>
+        </div>
+      )}
+
+      {/* 절약 현황 요약 */}
+      {savingStatus && (
+        <div className={`saving-summary ${(savingStatus.weeklySaved || 0) >= 0 ? 'positive' : 'negative'}`}>
+          <h3>이번 주 절약 현황</h3>
+          <div className="summary-grid">
+            <div className="summary-item">
+              <span className="summary-label">목표 지출</span>
+              <span className="summary-value">{(savingStatus.weeklyTarget || 0).toLocaleString()}원</span>
+            </div>
+            <div className="summary-item">
+              <span className="summary-label">실제 지출</span>
+              <span className="summary-value">{(savingStatus.weeklyExpenses || 0).toLocaleString()}원</span>
+            </div>
+            <div className="summary-item highlight">
+              <span className="summary-label">
+                {(savingStatus.weeklySaved || 0) >= 0 ? '절약액' : '초과액'}
+              </span>
+              <span className="summary-value">
+                {Math.abs(savingStatus.weeklySaved || 0).toLocaleString()}원
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 빠른 액션 버튼들 */}
+      <div className="quick-actions">
+        <button 
+          className="action-btn primary"
+          onClick={checkWeeklySavings}
+        >
+          🎯 주간 절약 체크
+        </button>
+        <button 
+          className="action-btn secondary"
+          onClick={checkDailySavings}
+        >
+          📅 일일 절약 체크
+        </button>
+        <button 
+          className="action-btn accent"
+          onClick={() => setShowAnalytics(true)}
+        >
+          📊 분석 보기
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>💰 SavePet 절약 가계부</h1>
+    <div className="app-container">
+      {/* 헤더 */}
+      <header className="app-header">
+        <h1>💰 SavePet</h1>
+        {isMobile && currentUser && renderNavigationBar()}
+      </header>
+
+      {/* 성공 메시지 */}
+      {showSuccess && (
+        <div className="success-message">
+          {showSuccess}
+        </div>
+      )}
+
+      {/* 애니메이션들 */}
+      {expGainAnimation && (
+        <div className="exp-gain-animation">
+          +{expGainAnimation} EXP!
+        </div>
+      )}
+
+      {evolutionAnimation && (
+        <div className="evolution-animation">
+          <div className="evolution-sparkles">✨🦋✨</div>
+          <h1>축하합니다! 캐릭터가 진화했습니다!</h1>
+          <div className="evolved-character">
+            {character && getStageEmoji(character.stage)}
+          </div>
+        </div>
+      )}
+
+      {missionCompleteAnimation && (
+        <div className="mission-complete-animation">
+          🎯 미션 완료!
+        </div>
+      )}
+
+      {rewardAnimation && (
+        <div className="reward-animation">
+          🎉💰🎉
+        </div>
+      )}
       
       {/* 카카오 로그인 */}
       <KakaoLogin 
@@ -298,458 +607,299 @@ function App() {
       
       {/* 로그인하지 않은 경우 */}
       {!currentUser && (
-        <div style={{
-          textAlign: 'center',
-          padding: '50px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '15px',
-          margin: '20px 0'
-        }}>
+        <div className="welcome-screen">
           <h2>SavePet에 오신 것을 환영합니다!</h2>
           <p>카카오 로그인을 통해 개인별 가계부를 시작하세요.</p>
           <p>절약하며 귀여운 펫을 키워보세요!</p>
         </div>
       )}
       
-      {/* 로딩 상태 (로그인한 경우에만) */}
+      {/* 로딩 상태 */}
       {currentUser && loading && (
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          height: '200px',
-          fontSize: '18px'
-        }}>
-          로딩 중...
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>로딩 중...</p>
         </div>
       )}
 
-      {/* 에러 상태 (로그인한 경우에만) */}
+      {/* 에러 상태 */}
       {currentUser && error && (
-        <div style={{ 
-          padding: '20px', 
-          maxWidth: '600px', 
-          margin: '20px auto',
-          textAlign: 'center',
-          backgroundColor: '#ffe8e8',
-          borderRadius: '10px',
-          border: '2px solid #ff5555'
-        }}>
+        <div className="error-container">
           <h3>오류 발생</h3>
           <p>{error}</p>
           <button 
             onClick={() => fetchData()}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#4caf50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
+            className="retry-btn"
           >
             다시 시도
           </button>
         </div>
       )}
 
-      {/* 메인 앱 내용 (로그인하고 로딩/에러가 없을 때만) */}
+      {/* 메인 컨텐츠 */}
       {currentUser && !loading && !error && (
-        <>
-          {/* 주간 예산 설정 */}
-          <div style={{ backgroundColor: '#e3f2fd', padding: '20px', marginBottom: '20px', borderRadius: '10px' }}>
-            <h3>주간 예산 설정</h3>
-            {budget && (
-              <p>현재 예산: {(budget.targetAmount || 0).toLocaleString()}원</p>
-            )}
-            <form onSubmit={setBudgetGoal} style={{ display: 'flex', gap: '10px' }}>
-              <input
-                type="number"
-                placeholder="주간 예산 금액"
-                value={budgetAmount}
-                onChange={(e) => setBudgetAmount(e.target.value)}
-                required
-                style={{ padding: '10px', flex: '1' }}
-              />
-              <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#2196f3', color: 'white', border: 'none', borderRadius: '5px' }}>
-                예산 설정
-              </button>
-            </form>
-          </div>
-
-          {/* 절약 현황 및 미션 */}
-          {savingStatus && (
-            <div style={{ 
-              backgroundColor: (savingStatus.weeklySaved || 0) >= 0 ? '#e8f5e8' : '#ffe8e8', 
-              padding: '20px', 
-              marginBottom: '20px', 
-              borderRadius: '10px' 
-            }}>
-              <h3>절약 현황 및 미션</h3>
-              
-              {/* 주간 절약 현황 */}
-              <div style={{ marginBottom: '15px' }}>
-                <h4>주간 절약</h4>
-                <p>목표 지출: {(savingStatus.weeklyTarget || 0).toLocaleString()}원</p>
-                <p>실제 지출: {(savingStatus.weeklyExpenses || 0).toLocaleString()}원</p>
-                <p style={{ 
-                  color: (savingStatus.weeklySaved || 0) >= 0 ? 'green' : 'red',
-                  fontWeight: 'bold'
-                }}>
-                  {(savingStatus.weeklySaved || 0) >= 0 ? '절약액' : '초과액'}: {Math.abs(savingStatus.weeklySaved || 0).toLocaleString()}원
-                </p>
+        <main className="main-content">
+          {/* 데스크톱 네비게이션 */}
+          {!isMobile && renderNavigationBar()}
+          
+          {/* 뷰 모드에 따른 컨텐츠 */}
+          {viewMode === 'dashboard' && renderDashboard()}
+          
+          {viewMode === 'calendar' && (
+            <div className="calendar-view">
+              <div className="calendar-header">
                 <button 
-                  onClick={checkWeeklySavings}
-                  style={{ 
-                    padding: '8px 16px', 
-                    backgroundColor: '#4caf50', 
-                    color: 'white', 
-                    border: 'none', 
-                    borderRadius: '5px',
-                    marginRight: '10px'
-                  }}
+                  className="calendar-nav-btn"
+                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
                 >
-                  주간 절약 체크
+                  ‹
+                </button>
+                <h3>{currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월</h3>
+                <button 
+                  className="calendar-nav-btn"
+                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                >
+                  ›
                 </button>
               </div>
 
-              {/* 일일 절약 현황 */}
-              <div style={{ marginBottom: '15px' }}>
-                <h4>오늘 절약</h4>
-                <p>일일 목표: {(savingStatus.dailyTarget || 0).toLocaleString()}원</p>
-                <p>오늘 지출: {(savingStatus.todayExpenses || 0).toLocaleString()}원</p>
-                <p style={{ 
-                  color: (savingStatus.todaySaved || 0) >= 0 ? 'green' : 'red',
-                  fontWeight: 'bold'
-                }}>
-                  {(savingStatus.todaySaved || 0) >= 0 ? '절약액' : '초과액'}: {Math.abs(savingStatus.todaySaved || 0).toLocaleString()}원
-                </p>
-                <button 
-                  onClick={checkDailySavings}
-                  style={{ 
-                    padding: '8px 16px', 
-                    backgroundColor: '#ff9800', 
-                    color: 'white', 
-                    border: 'none', 
-                    borderRadius: '5px'
-                  }}
-                >
-                  일일 절약 체크
-                </button>
-              </div>
-
-              {/* 현재 미션 */}
-              {savingStatus.missionProgress && savingStatus.missionProgress.description && (
-                <div style={{ 
-                  backgroundColor: 'rgba(255,255,255,0.7)', 
-                  padding: '15px', 
-                  borderRadius: '8px',
-                  marginTop: '15px'
-                }}>
-                  <h4>🎯 현재 미션</h4>
-                  <p><strong>{savingStatus.missionProgress.description}</strong></p>
-                  <div style={{ 
-                    backgroundColor: '#e0e0e0', 
-                    height: '20px', 
-                    borderRadius: '10px', 
-                    overflow: 'hidden',
-                    marginBottom: '10px'
-                  }}>
-                    <div style={{
-                      backgroundColor: savingStatus.missionProgress.completed ? '#4caf50' : '#2196f3',
-                      height: '100%',
-                      width: `${Math.min(((savingStatus.missionProgress.current || 0) / (savingStatus.missionProgress.target || 1)) * 100, 100)}%`,
-                      transition: 'width 0.3s ease'
-                    }}></div>
+              <div className="calendar-grid">
+                {['일', '월', '화', '수', '목', '금', '토'].map(day => (
+                  <div key={day} className="calendar-header-day">
+                    {day}
                   </div>
-                  <p>
-                    진행률: {(savingStatus.missionProgress.current || 0).toLocaleString()}원 / {(savingStatus.missionProgress.target || 0).toLocaleString()}원
-                    {savingStatus.missionProgress.completed && <span style={{ color: 'green', fontWeight: 'bold' }}> ✅ 완료!</span>}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 캐릭터 정보 */}
-          {character && (
-            <div style={{ 
-              backgroundColor: '#f8f9fa', 
-              padding: '30px', 
-              marginBottom: '20px', 
-              borderRadius: '15px',
-              textAlign: 'center',
-              border: '2px solid #e9ecef'
-            }}>
-              <h2 style={{ marginBottom: '15px' }}>🎮 내 캐릭터</h2>
-              
-              <div style={{ fontSize: '4rem', marginBottom: '10px' }}>
-                {getStageEmoji(character.stage)}
-              </div>
-              
-              <h3 style={{ margin: '10px 0', color: '#495057' }}>
-                {character.name} (Lv.{character.level || 1})
-              </h3>
-              
-              <div style={{ 
-                backgroundColor: 'white', 
-                padding: '15px', 
-                borderRadius: '10px',
-                margin: '15px 0'
-              }}>
-                <p style={{ margin: '5px 0', fontSize: '1.1rem' }}>
-                  <strong>현재 단계:</strong> {getStageKorean(character.stage)}
-                </p>
-                <p style={{ margin: '5px 0', fontSize: '1.1rem' }}>
-                  <strong>경험치:</strong> {(character.experience || 0).toLocaleString()} / {getNextStageExp(character.stage).toLocaleString()}
-                </p>
-              </div>
-              
-              {/* 경험치 프로그레스 바 */}
-              <div style={{ 
-                backgroundColor: '#e9ecef', 
-                height: '20px', 
-                borderRadius: '10px', 
-                overflow: 'hidden',
-                margin: '10px 0'
-              }}>
-                <div style={{
-                  backgroundColor: character.stage === 'BILLIONAIRE' ? '#28a745' : '#007bff',
-                  height: '100%',
-                  width: `${Math.min(((character.experience || 0) / getNextStageExp(character.stage)) * 100, 100)}%`,
-                  transition: 'width 0.3s ease'
-                }}></div>
-              </div>
-              
-              <p style={{ fontSize: '0.9rem', color: '#6c757d' }}>
-                💡 절약을 달성하고 미션을 완료하면 캐릭터가 진화해요!
-              </p>
-            </div>
-          )}
-
-          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-            <button 
-              onClick={() => setShowAnalytics(true)}
-              style={{ 
-                padding: '12px 24px', 
-                backgroundColor: '#9c27b0', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px',
-                fontSize: '16px',
-                cursor: 'pointer'
-              }}
-            >
-              📊 절약 분석 보기
-            </button>
-          </div>
-
-          {/* 거래 입력 */}
-          <form onSubmit={addTransaction} style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <input
-                type="text"
-                placeholder="내역 설명 (커피, 간식, 배달음식 등)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                required
-                style={{ padding: '10px', flex: '2', minWidth: '200px' }}
-              />
-              <input
-                type="number"
-                placeholder="금액"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-                style={{ padding: '10px', flex: '1', minWidth: '100px' }}
-              />
-              <select 
-                value={type} 
-                onChange={(e) => setType(e.target.value as 'income' | 'expense')}
-                style={{ padding: '10px' }}
-              >
-                <option value="expense">지출</option>
-                <option value="income">수입</option>
-              </select>
-              <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '5px' }}>
-                추가
-              </button>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '5px' }}>
-              💡 미션 달성을 위해 거래 설명에 '커피', '간식', '배달' 등의 키워드를 포함해주세요!
-            </p>
-          </form>
-
-          {/* 달력 */}
-          <div style={{ backgroundColor: '#fff3e0', padding: '20px', marginBottom: '20px', borderRadius: '10px' }}>
-            <h3>월별 지출 달력</h3>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <button 
-                onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                style={{ padding: '10px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '5px' }}
-              >
-                이전 달
-              </button>
-              <h4>{currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월</h4>
-              <button 
-                onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                style={{ padding: '10px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '5px' }}
-              >
-                다음 달
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', backgroundColor: '#ddd' }}>
-              {['일', '월', '화', '수', '목', '금', '토'].map(day => (
-                <div key={day} style={{ padding: '10px', backgroundColor: '#f5f5f5', textAlign: 'center', fontWeight: 'bold' }}>
-                  {day}
-                </div>
-              ))}
-              
-              {getCalendarDays().map((date, index) => {
-                const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
-                const isSelected = formatDate(date) === selectedDate;
-                const dayTransactions = getDayTransactions(date);
-                const dayExpenses = dayTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                ))}
                 
-                return (
-                  <div
-                    key={index}
-                    onClick={() => setSelectedDate(formatDate(date))}
-                    style={{
-                      padding: '8px',
-                      backgroundColor: isSelected ? '#2196f3' : isCurrentMonth ? 'white' : '#f0f0f0',
-                      color: isSelected ? 'white' : isCurrentMonth ? 'black' : '#999',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                      minHeight: '80px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'flex-start',
-                      fontSize: '12px'
-                    }}
-                  >
-                    <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{date.getDate()}</div>
-                    {dayExpenses > 0 && (
-                      <div style={{ fontSize: '10px', color: isSelected ? 'white' : 'red', marginBottom: '2px' }}>
-                        -{dayExpenses.toLocaleString()}원
+                {getCalendarDays().map((date, index) => {
+                  const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
+                  const isSelected = formatDate(date) === selectedDate;
+                  const dayTransactions = getDayTransactions(date);
+                  const dayExpenses = dayTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                  
+                  return (
+                    <div
+                      key={index}
+                      onClick={() => setSelectedDate(formatDate(date))}
+                      className={`calendar-day ${isSelected ? 'selected' : ''} ${!isCurrentMonth ? 'other-month' : ''}`}
+                    >
+                      <div className="day-number">{date.getDate()}</div>
+                      {dayExpenses > 0 && (
+                        <div className="day-expense">
+                          -{dayExpenses.toLocaleString()}원
+                        </div>
+                      )}
+                      <div className="day-transactions">
+                        {dayTransactions.slice(0, 2).map((transaction, idx) => (
+                          <div key={idx} className="transaction-preview">
+                            {transaction.description}
+                          </div>
+                        ))}
+                        {dayTransactions.length > 2 && (
+                          <div className="more-indicator">
+                            +{dayTransactions.length - 2}개
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {dayTransactions.slice(0, 2).map((transaction, idx) => (
-                      <div key={idx} style={{ 
-                        fontSize: '9px', 
-                        color: isSelected ? 'white' : '#666',
-                        textOverflow: 'ellipsis',
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {transaction.description}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 선택된 날짜의 거래 내역 */}
+              <div className="selected-date-transactions">
+                <h3>{selectedDate} 거래 내역</h3>
+                {dailyTransactions.length > 0 ? (
+                  <>
+                    {dailyTransactions.map(transaction => (
+                      <div key={transaction.id} className={`transaction-item ${transaction.type}`}>
+                        <div className="transaction-info">
+                          <span className="transaction-desc">{transaction.description}</span>
+                          <span className="transaction-amount">
+                            {transaction.type === 'income' ? '+' : '-'}{(transaction.amount || 0).toLocaleString()}원
+                          </span>
+                        </div>
+                        <button 
+                          onClick={() => deleteTransaction(transaction.id!)}
+                          className="delete-btn"
+                        >
+                          삭제
+                        </button>
                       </div>
                     ))}
-                    {dayTransactions.length > 2 && (
-                      <div style={{ fontSize: '8px', color: isSelected ? 'white' : '#999' }}>
-                        +{dayTransactions.length - 2}개
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    <div className="daily-summary">
+                      일일 지출 합계: {dailyTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + (t.amount || 0), 0).toLocaleString()}원
+                    </div>
+                  </>
+                ) : (
+                  <p className="no-transactions">해당 날짜에 거래 내역이 없습니다.</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+          
+          {viewMode === 'transactions' && (
+            <div className="transactions-view">
+              {/* 거래 입력 폼 */}
+              <form onSubmit={addTransaction} className="transaction-form enhanced">
+                <h3>💳 새 거래 추가</h3>
+                <div className="form-grid">
+                  <input
+                    type="text"
+                    placeholder="내역 설명 (커피, 간식, 배달음식 등)"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    required
+                    className="form-input"
+                  />
+                  <input
+                    type="number"
+                    placeholder="금액"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    required
+                    className="form-input"
+                  />
+                  <select 
+                    value={type} 
+                    onChange={(e) => setType(e.target.value as 'income' | 'expense')}
+                    className="form-select"
+                  >
+                    <option value="expense">지출</option>
+                    <option value="income">수입</option>
+                  </select>
+                  <button type="submit" className="form-submit">
+                    추가
+                  </button>
+                </div>
+                <p className="form-hint">
+                  💡 미션 달성을 위해 거래 설명에 '커피', '간식', '배달' 등의 키워드를 포함해주세요!
+                </p>
+              </form>
 
-          <Analytics isVisible={showAnalytics} onClose={() => setShowAnalytics(false)} />
-
-          {/* 선택된 날짜의 거래 내역 */}
-          <div style={{ backgroundColor: '#f9f9f9', padding: '20px', marginBottom: '20px', borderRadius: '10px' }}>
-            <h3>{selectedDate} 거래 내역</h3>
-            {dailyTransactions.length > 0 ? (
-              <>
-                {dailyTransactions.map(transaction => (
-                  <div key={transaction.id} style={{
-                    padding: '10px',
-                    margin: '5px 0',
-                    backgroundColor: transaction.type === 'income' ? '#e8f5e8' : '#ffe8e8',
-                    borderRadius: '5px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <span>{transaction.description}</span>
-                    <div>
-                      <span style={{ color: transaction.type === 'income' ? 'green' : 'red', marginRight: '10px' }}>
+              {/* 최근 거래 내역 */}
+              <div className="recent-transactions">
+                <h3>최근 거래 내역</h3>
+                {transactions.slice(0, 10).map(transaction => (
+                  <div key={transaction.id} className={`transaction-item ${transaction.type}`}>
+                    <div className="transaction-details">
+                      <strong className="transaction-desc">{transaction.description}</strong>
+                      <div className="transaction-date">
+                        {transaction.createdAt && new Date(transaction.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="transaction-actions">
+                      <span className="transaction-amount">
                         {transaction.type === 'income' ? '+' : '-'}{(transaction.amount || 0).toLocaleString()}원
                       </span>
                       <button 
                         onClick={() => deleteTransaction(transaction.id!)}
-                        style={{ 
-                          padding: '3px 8px', 
-                          backgroundColor: '#f44336', 
-                          color: 'white', 
-                          border: 'none', 
-                          borderRadius: '3px',
-                          fontSize: '12px'
-                        }}
+                        className="delete-btn"
                       >
                         삭제
                       </button>
                     </div>
                   </div>
                 ))}
-                <p style={{ marginTop: '10px', fontWeight: 'bold' }}>
-                  일일 지출 합계: {dailyTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + (t.amount || 0), 0).toLocaleString()}원
-                </p>
-              </>
-            ) : (
-              <p>해당 날짜에 거래 내역이 없습니다.</p>
-            )}
-          </div>
-
-          {/* 최근 거래 내역 */}
-          <h3>최근 거래 내역</h3>
-          <div>
-            {transactions.slice(0, 5).map(transaction => (
-              <div key={transaction.id} style={{
-                padding: '15px',
-                margin: '10px 0',
-                backgroundColor: transaction.type === 'income' ? '#e8f5e8' : '#ffe8e8',
-                borderRadius: '8px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div>
-                  <strong>{transaction.description}</strong>
-                  <div style={{ fontSize: '0.8rem', color: '#666' }}>
-                    {transaction.createdAt && new Date(transaction.createdAt).toLocaleString()}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ 
-  color: transaction.type === 'income' ? 'green' : 'red',
-  fontWeight: 'bold'
-}}>
-  {transaction.type === 'income' ? '+' : '-'}{(transaction.amount || 0).toLocaleString()}원
-</span>
-<button 
-  onClick={() => deleteTransaction(transaction.id!)}
-  style={{ 
-    padding: '5px 10px', 
-    backgroundColor: '#f44336', 
-    color: 'white', 
-    border: 'none', 
-    borderRadius: '3px',
-    cursor: 'pointer'
-  }}
->
-  삭제
-</button>
-                </div>
               </div>
-            ))}
-          </div>
-        </>
+            </div>
+          )}
+
+          {/* 고정 섹션들 (모든 뷰에서 표시) */}
+          {viewMode === 'dashboard' && (
+            <>
+              {/* 주간 예산 설정 */}
+              <div className="budget-section">
+                <h3>📊 주간 예산 설정</h3>
+                {budget && (
+                  <p className="current-budget">현재 예산: {(budget.targetAmount || 0).toLocaleString()}원</p>
+                )}
+                <form onSubmit={setBudgetGoal} className="budget-form">
+                  <input
+                    type="number"
+                    placeholder="주간 예산 금액"
+                    value={budgetAmount}
+                    onChange={(e) => setBudgetAmount(e.target.value)}
+                    required
+                    className="budget-input"
+                  />
+                  <button type="submit" className="budget-submit">
+                    예산 설정
+                  </button>
+                </form>
+              </div>
+
+              {/* 절약 현황 및 미션 */}
+              {savingStatus && (
+                <div className={`saving-status-section ${(savingStatus.weeklySaved || 0) >= 0 ? 'positive' : 'negative'}`}>
+                  <h3>🎯 절약 현황 및 미션</h3>
+                  
+                  {/* 주간 절약 현황 */}
+                  <div className="saving-category">
+                    <h4>주간 절약</h4>
+                    <div className="saving-stats">
+                      <p>목표 지출: {(savingStatus.weeklyTarget || 0).toLocaleString()}원</p>
+                      <p>실제 지출: {(savingStatus.weeklyExpenses || 0).toLocaleString()}원</p>
+                      <p className="saving-amount">
+                        {(savingStatus.weeklySaved || 0) >= 0 ? '절약액' : '초과액'}: 
+                        <span>{Math.abs(savingStatus.weeklySaved || 0).toLocaleString()}원</span>
+                      </p>
+                    </div>
+                    <button 
+                      onClick={checkWeeklySavings}
+                      className="check-btn weekly"
+                    >
+                      주간 절약 체크
+                    </button>
+                  </div>
+
+                  {/* 일일 절약 현황 */}
+                  <div className="saving-category">
+                    <h4>오늘 절약</h4>
+                    <div className="saving-stats">
+                      <p>일일 목표: {(savingStatus.dailyTarget || 0).toLocaleString()}원</p>
+                      <p>오늘 지출: {(savingStatus.todayExpenses || 0).toLocaleString()}원</p>
+                      <p className="saving-amount">
+                        {(savingStatus.todaySaved || 0) >= 0 ? '절약액' : '초과액'}: 
+                        <span>{Math.abs(savingStatus.todaySaved || 0).toLocaleString()}원</span>
+                      </p>
+                    </div>
+                    <button 
+                      onClick={checkDailySavings}
+                      className="check-btn daily"
+                    >
+                      일일 절약 체크
+                    </button>
+                  </div>
+
+                  {/* 현재 미션 */}
+                  {savingStatus.missionProgress && savingStatus.missionProgress.description && (
+                    <div className={`mission-section ${savingStatus.missionProgress.completed ? 'completed' : ''}`}>
+                      <h4>🎯 현재 미션</h4>
+                      <p className="mission-description">
+                        <strong>{savingStatus.missionProgress.description}</strong>
+                      </p>
+                      <div className="mission-progress-bar">
+                        <div 
+                          className="mission-progress-fill"
+                          style={{
+                            width: `${Math.min(((savingStatus.missionProgress.current || 0) / (savingStatus.missionProgress.target || 1)) * 100, 100)}%`
+                          }}
+                        ></div>
+                      </div>
+                      <p className="mission-stats">
+                        진행률: {(savingStatus.missionProgress.current || 0).toLocaleString()}원 / {(savingStatus.missionProgress.target || 0).toLocaleString()}원
+                        {savingStatus.missionProgress.completed && <span className="completed-badge"> ✅ 완료!</span>}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </main>
       )}
+
+      <Analytics isVisible={showAnalytics} onClose={() => setShowAnalytics(false)} />
     </div>
   );
 }

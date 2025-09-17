@@ -36,16 +36,25 @@ public class CharacterService {
         Character character = getOrCreateCharacter();
         Budget currentBudget = getCurrentWeekBudget();
         
-        if (currentBudget == null) {
+        if (currentBudget == null || currentBudget.getTargetAmount() == null) {
+            System.out.println("예산이 설정되지 않음");
             return character;
         }
 
         BigDecimal weeklyExpenses = calculateWeeklyExpenses();
         BigDecimal savedAmount = currentBudget.getTargetAmount().subtract(weeklyExpenses);
 
+        System.out.println("주간 절약 체크:");
+        System.out.println("목표 예산: " + currentBudget.getTargetAmount());
+        System.out.println("실제 지출: " + weeklyExpenses);
+        System.out.println("절약액: " + savedAmount);
+
         if (savedAmount.compareTo(BigDecimal.ZERO) > 0) {
-            // 경험치 추가
+            // 경험치 추가 (절약액의 1/1000)
             int expToAdd = savedAmount.intValue() / 1000;
+            if (expToAdd <= 0) expToAdd = 1; // 최소 1 경험치
+            
+            System.out.println("경험치 추가: " + expToAdd);
             character.addExperience(expToAdd);
             
             // 미션 완료 체크
@@ -55,6 +64,43 @@ public class CharacterService {
             checkEvolution(character);
             
             return characterRepository.save(character);
+        } else {
+            System.out.println("절약하지 못함. 경험치 없음.");
+        }
+
+        return character;
+    }
+    
+    public Character checkDailySavings() {
+        Character character = getOrCreateCharacter();
+        Budget currentBudget = getCurrentWeekBudget();
+        
+        if (currentBudget == null || currentBudget.getTargetAmount() == null) {
+            System.out.println("예산이 설정되지 않음");
+            return character;
+        }
+
+        BigDecimal dailyTarget = currentBudget.getTargetAmount().divide(BigDecimal.valueOf(7));
+        BigDecimal todayExpenses = calculateTodayExpenses();
+        BigDecimal dailySaved = dailyTarget.subtract(todayExpenses);
+
+        System.out.println("일일 절약 체크:");
+        System.out.println("일일 목표: " + dailyTarget);
+        System.out.println("오늘 지출: " + todayExpenses);
+        System.out.println("절약액: " + dailySaved);
+
+        if (dailySaved.compareTo(BigDecimal.ZERO) > 0) {
+            // 일일 경험치는 적게 (절약액의 1/5000, 최소 1)
+            int expToAdd = Math.max(1, dailySaved.intValue() / 5000);
+            
+            System.out.println("경험치 추가: " + expToAdd);
+            character.addExperience(expToAdd);
+            
+            checkEvolution(character);
+            
+            return characterRepository.save(character);
+        } else {
+            System.out.println("절약하지 못함. 경험치 없음.");
         }
 
         return character;
@@ -80,8 +126,17 @@ public class CharacterService {
         try {
             int completedMissions = missionService.getCompletedMissionCount();
             
+            System.out.println("진화 체크:");
+            System.out.println("현재 단계: " + character.getStage());
+            System.out.println("현재 경험치: " + character.getExperience());
+            System.out.println("완료된 미션 수: " + completedMissions);
+            
             if (character.canEvolve(completedMissions)) {
+                String oldStage = character.getStage();
                 character.evolve();
+                System.out.println("진화 완료! " + oldStage + " -> " + character.getStage());
+            } else {
+                System.out.println("진화 조건 미충족");
             }
         } catch (Exception e) {
             // 진화 체크 오류가 발생해도 전체 프로세스는 계속 진행
@@ -89,37 +144,15 @@ public class CharacterService {
         }
     }
 
-    public Character checkDailySavings() {
-        Character character = getOrCreateCharacter();
-        Budget currentBudget = getCurrentWeekBudget();
-        
-        if (currentBudget == null) {
-            return character;
-        }
-
-        BigDecimal dailyTarget = currentBudget.getTargetAmount().divide(BigDecimal.valueOf(7));
-        BigDecimal todayExpenses = calculateTodayExpenses();
-        BigDecimal dailySaved = dailyTarget.subtract(todayExpenses);
-
-        if (dailySaved.compareTo(BigDecimal.ZERO) > 0) {
-            int expToAdd = Math.max(1, dailySaved.intValue() / 5000);
-            character.addExperience(expToAdd);
-            
-            checkEvolution(character);
-            
-            return characterRepository.save(character);
-        }
-
-        return character;
-    }
-
     private BigDecimal calculateWeeklyExpenses() {
         LocalDate weekStart = LocalDate.now().with(DayOfWeek.MONDAY);
         LocalDate weekEnd = weekStart.plusDays(6);
         
+        System.out.println("주간 계산 기간: " + weekStart + " ~ " + weekEnd);
+        
         List<Transaction> transactions = transactionRepository.findByOrderByCreatedAtDesc();
         
-        return transactions.stream()
+        BigDecimal weeklyExpenses = transactions.stream()
             .filter(t -> "expense".equals(t.getType()))
             .filter(t -> {
                 LocalDate transactionDate = t.getCreatedAt().toLocalDate();
@@ -127,6 +160,9 @@ public class CharacterService {
             })
             .map(Transaction::getAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
+            
+        System.out.println("이번 주 지출 계산 결과: " + weeklyExpenses);
+        return weeklyExpenses;
     }
 
     private BigDecimal calculateTodayExpenses() {
@@ -134,15 +170,24 @@ public class CharacterService {
         
         List<Transaction> transactions = transactionRepository.findByOrderByCreatedAtDesc();
         
-        return transactions.stream()
+        BigDecimal todayExpenses = transactions.stream()
             .filter(t -> "expense".equals(t.getType()))
             .filter(t -> t.getCreatedAt().toLocalDate().equals(today))
             .map(Transaction::getAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
+            
+        System.out.println("오늘 지출 계산 결과: " + todayExpenses);
+        return todayExpenses;
     }
 
     private Budget getCurrentWeekBudget() {
-        return budgetRepository.findById(1L).orElse(new Budget());
+        Budget budget = budgetRepository.findById(1L).orElse(null);
+        if (budget != null) {
+            System.out.println("현재 예산: " + budget.getTargetAmount());
+        } else {
+            System.out.println("예산이 설정되지 않음");
+        }
+        return budget;
     }
 
     public String getStageDescription(String stage) {
@@ -165,6 +210,10 @@ public class CharacterService {
     public SavingStatus getCurrentSavingStatus() {
         try {
             Budget budget = getCurrentWeekBudget();
+            if (budget == null || budget.getTargetAmount() == null) {
+                budget = new Budget(); // 기본값 사용
+            }
+            
             BigDecimal weeklyExpenses = calculateWeeklyExpenses();
             BigDecimal savedAmount = budget.getTargetAmount().subtract(weeklyExpenses);
             

@@ -24,14 +24,12 @@ public class CharacterController {
     @Autowired
     private CharacterRepository characterRepository;
 
+    @Autowired
+    private CharacterService characterService;
+
     @GetMapping
     public Character getCharacter() {
-        Character character = characterRepository.findTopByOrderByCreatedAtDesc();
-        if (character == null) {
-            character = new Character("머니펫");
-            character = characterRepository.save(character);
-        }
-        return character;
+        return characterService.getOrCreateCharacter();
     }
 
     @GetMapping("/saving-status")
@@ -110,7 +108,9 @@ public class CharacterController {
             System.out.println("=== Saving Status Debug ===");
             System.out.println("예산: " + weeklyTarget);
             System.out.println("주간 지출: " + weeklyExpenses);
+            System.out.println("주간 절약: " + weeklySaved);
             System.out.println("오늘 지출: " + todayExpenses);
+            System.out.println("오늘 절약: " + todaySaved);
             System.out.println("커피 지출: " + coffeeExpenses);
             System.out.println("==========================");
             
@@ -155,9 +155,7 @@ public class CharacterController {
 
     @PostMapping("/add-experience")
     public Character addSavingExperience(@RequestParam Integer amount) {
-        Character character = getCharacter();
-        character.addExperience(amount / 1000);
-        return characterRepository.save(character);
+        return characterService.addSavingExperience(BigDecimal.valueOf(amount));
     }
 
     @DeleteMapping("/reset")
@@ -168,16 +166,22 @@ public class CharacterController {
 
     @PostMapping("/check-saving")
     public Character checkSaving() {
-        return getCharacter();
+        return characterService.checkSavingAchievement();
     }
 
     @PostMapping("/check-weekly-savings")
     public Character checkWeeklySavings() {
-        return getCharacter();
+        System.out.println("=== 주간 절약 체크 시작 ===");
+        Character result = characterService.checkWeeklySavings();
+        System.out.println("=== 주간 절약 체크 완료 ===");
+        return result;
     }
     
     @PostMapping("/check-daily-savings")
     public Character checkDailySavings() {
-        return getCharacter();
+        System.out.println("=== 일일 절약 체크 시작 ===");
+        Character result = characterService.checkDailySavings();
+        System.out.println("=== 일일 절약 체크 완료 ===");
+        return result;
     }
 }
